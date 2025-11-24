@@ -1,3 +1,12 @@
+/.env
+node_modules/
+frontend/node_modules/
+backend/.venv/
+__pycache__/
+*.pyc
+dist/
+build/
+/.DS_Store
 # --- Python / Django ---
 backend/venv/
 **/__pycache__/

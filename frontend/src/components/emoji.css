@@ -1,0 +1,206 @@
+.emoji-face .eye
+{
+	width: 22px;
+	height: 22px;
+	background: #fff;
+	border-radius: 50%;
+	position: relative;
+	box-shadow: inset 0 -2px 6px rgba(0,0,0,0.16);
+	transition: all .18s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.emoji-face .eye .pupil
+{
+	width: 9px;
+	height: 9px;
+	background: #05122a;
+	border-radius: 50%;
+	transition: transform .08s linear, opacity .12s ease;
+}
+
+.emoji-face .mouth
+{
+	width: 52px;
+	height: 30px;
+	border-radius: 0 0 120px 120px;
+	background: #05122a;
+	margin-top: 12px;
+	transition: all .18s ease;
+}
+
+.emoji-face.idle
+{
+	transform: scale(1);
+}
+
+.emoji-face.happy
+{
+	transform: translateY(-6px) scale(1.02);
+}
+
+.emoji-face.happy .mouth
+{
+	height: 22px;
+	border-radius: 0 0 120px 120px;
+	transform: translateY(2px);
+}
+
+.emoji-face.confident
+{
+	transform: translateY(-4px);
+}
+
+.emoji-face.concern .mouth
+{
+	height: 18px;
+	border-radius: 120px 120px 0 0;
+	transform: rotate(180deg);
+}
+
+.emoji-face.sad
+{
+	transform: translateY(-2px);
+	animation: shake .9s;
+}
+
+.emoji-face.sad .mouth
+{
+	height: 18px;
+	border-radius: 120px 120px 0 0;
+	transform: rotate(180deg);
+}
+
+.emoji-face.success
+{
+	transform: scale(1.08);
+	box-shadow: 0 8px 30px rgba(96,165,250,0.2);
+}
+
+.emoji-face.watching .eye
+{
+	transform: scale(1.08);
+}
+
+.emoji-face.peek .eye
+{
+	opacity: 0.92;
+}
+
+.emoji-face.peek .mouth
+{
+	height: 6px;
+	border-radius: 4px;
+	background: #05122a;
+	width: 40px;
+}
+
+.emoji-face .hand
+{
+	position: absolute;
+	top: 10%;
+	width: 48%;
+	height: 36%;
+	background: linear-gradient(180deg, #f8e9d6, #e9cfae);
+	border-radius: 28px;
+	box-shadow: 0 8px 24px rgba(2,6,23,0.32);
+	transform: translateY(-180%);
+	transition: transform .28s cubic-bezier(.22,.9,.28,1), opacity .2s;
+	pointer-events: none;
+	z-index: 6;
+	opacity: 0;
+	visibility: hidden;
+}
+
+.emoji-face .hand.left
+{
+	left: 4%;
+	transform-origin: center right;
+	transform: rotate(-8deg) translateY(-180%);
+}
+
+.emoji-face .hand.right
+{
+	right: 4%;
+	transform-origin: center left;
+	transform: rotate(8deg) translateY(-180%);
+}
+
+.emoji-face.peek .hand
+{
+	opacity: 1;
+	visibility: visible;
+}
+
+.emoji-face.peek .hand.left
+{
+	transform: rotate(-8deg) translateY(6%);
+}
+
+.emoji-face.peek .hand.right
+{
+	transform: rotate(8deg) translateY(6%);
+}
+
+.emoji-face .hand::before
+{
+	content: '';
+	position: absolute;
+	top: 8%;
+	left: 8%;
+	width: 22%;
+	height: 40%;
+	border-radius: 50%;
+	background: linear-gradient(180deg, #f0d9be, #dcc0a0);
+	box-shadow: inset 0 -2px 6px rgba(0,0,0,0.08);
+}
+
+.emoji-face .hand::after
+{
+	content: '';
+	position: absolute;
+	top: 8%;
+	right: 8%;
+	width: 22%;
+	height: 40%;
+	border-radius: 50%;
+	background: linear-gradient(180deg, #f0d9be, #dcc0a0);
+	box-shadow: inset 0 -2px 6px rgba(0,0,0,0.08);
+}
+
+.emoji-face.peek .pupil
+{
+	opacity: 0;
+}
+
+.emoji-face.neutral
+{
+	transform: translateY(-2px);
+}
+
+.emoji-face.neutral .mouth
+{
+	height: 6px;
+	border-radius: 4px;
+	background: #05122a;
+	width: 40px;
+}
+
+
+.emoji-face.flip-mouth .mouth
+{
+  transform-origin: center;
+  transform: scaleY(-1);
+}
+
+@keyframes shake
+{
+	0%{transform:translateX(0)}
+	20%{transform:translateX(-6px)}
+	40%{transform:translateX(6px)}
+	60%{transform:translateX(-4px)}
+	80%{transform:translateX(4px)}
+	100%{transform:translateX(0)}
+}

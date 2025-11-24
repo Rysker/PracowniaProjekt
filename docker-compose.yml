@@ -1,0 +1,42 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ppdb}
+      POSTGRES_USER: ${POSTGRES_USER:-ppuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ppsecret}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - pp-network
+
+  web:
+    build: ./backend
+    command: bash -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-ppdb}
+      - POSTGRES_USER=${POSTGRES_USER:-ppuser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ppsecret}
+      - POSTGRES_HOST=db
+      - DJANGO_DEBUG=1
+      - DJANGO_ALLOWED_HOSTS=*
+      - PASSWORD_PEPPER=${PASSWORD_PEPPER}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+    depends_on:
+      - db
+    networks:
+      - pp-network
+
+volumes:
+  db-data:
+
+networks:
+  pp-network:
+    driver: bridge
