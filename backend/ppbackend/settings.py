@@ -13,23 +13,12 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-r8$4=%2hx299#ofwcc6_$w@#2wdv+=i!+*(9hy+z9=vrbk9-2q')
-
-# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
-
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '') .split(',') if os.environ.get('DJANGO_ALLOWED_HOSTS') else []
-
-
-# Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -74,10 +63,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'ppbackend.wsgi.application'
 
-
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -85,7 +70,7 @@ DATABASES = {
     }
 }
 
-# Optional Postgres configuration via environment variables (used in Docker)
+# Used in Docker
 if os.environ.get('POSTGRES_DB'):
     DATABASES['default'] = {
         'ENGINE': 'django.db.backends.postgresql',
@@ -96,9 +81,7 @@ if os.environ.get('POSTGRES_DB'):
         'PORT': os.environ.get('POSTGRES_PORT', '5432'),
     }
 
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
-
+# Ustawienia walidacji haseł
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -117,23 +100,17 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# CORS: allow specific origins via env var in production. Example:
-# CORS_ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '') .split(',') if os.environ.get('CORS_ALLOWED_ORIGINS') else []
 
-# Password pepper (optional). Keep this secret in production (env var).
 PASSWORD_PEPPER = os.environ.get("PASSWORD_PEPPER", "dev-pepper")
 
-# Use a custom peppered hasher first, fall back to Django defaults
+# Autorski hasher będzie używany jako pierwszy, w innym przypadku domyślne
 PASSWORD_HASHERS = [
-    'api.hashers.PBKDF2PasswordHasher',
+    'api.hashers.PBKDF2PepperedHasher', 
     'django.contrib.auth.hashers.PBKDF2PasswordHasher',
     'django.contrib.auth.hashers.Argon2PasswordHasher',
     'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
 ]
-
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
 
@@ -147,17 +124,10 @@ AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
 ]
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
 STATIC_URL = 'static/'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# REST framework + JWT
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',

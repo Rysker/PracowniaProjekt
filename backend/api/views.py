@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib.auth.password_validation import validate_password, ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 
+import traceback
 
 def hello(request):
     return JsonResponse({"message": "Hello from Django!"})
@@ -59,7 +60,7 @@ def login_view(request):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
     email = payload.get('email', '').strip()
-    password = payload.get('password', '')
+    password = payload.get('password', '').strip()
 
     if not email or '@' not in email:
         return JsonResponse({'ok': False, 'error': 'Invalid email', 'invalid': ['email']}, status=400)
