@@ -574,6 +574,7 @@ export default function LoginRegister() {
         body: JSON.stringify({ enable: false }) // No code required
       });
       if (res.ok) {
+
         setIs2FaEnabled(false);
         setSetupMsg('2FA wyłączone.');
         fetch2FaStatus(); // Odśwież, żeby wygenerować nowe sekrety na przyszłość
