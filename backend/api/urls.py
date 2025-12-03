@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    hello, logout_view, register, login_view,
+    change_password, hello, logout_view, register, login_view,
     debug_users, debug_delete_users,
     setup_2fa, confirm_2fa_setup, verify_2fa_login
 )
@@ -10,10 +10,10 @@ urlpatterns = [
     path('register/', register),
     path('login/', login_view),
 
-    # Nowe ścieżki 2FA
     path('login/2fa/', verify_2fa_login),
     path('2fa/setup/', setup_2fa),
     path('2fa/confirm/', confirm_2fa_setup),
+    path('change-password/', change_password, name='change-password'),
 
     path("debug/users/", debug_users),
     path("debug/all_users/", debug_delete_users),

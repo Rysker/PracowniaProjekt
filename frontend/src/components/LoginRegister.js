@@ -2,10 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import EmojiFace from './EmojiFace';
 import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
-import ChangePasswordContent from './ChangePassword';
+import ChangePassword from './ChangePassword';
 import '../styles/App.css';
 
-// --- Helper Functions ---
 function validatePassword(password) {
   const minLength = 8;
   const hasUpper = /[A-Z]/.test(password);
@@ -20,8 +19,6 @@ function validatePassword(password) {
   if (!hasSymbol) return 'Hasło musi zawierać znak specjalny';
   return null;
 }
-
-// --- Sub-Components ---
 
 const TwoFaForm = ({ onSubmit, onCancel, code, setCode, message, isError }) => {
   const [useBackup, setUseBackup] = useState(false);
@@ -116,7 +113,7 @@ const TwoFaSettings = ({
   }, []);
 
   const startConfiguration = () => {
-    fetchStatus(); // Odświeżamy (generujemy nowy sekret) przy wejściu w konfigurację
+    fetchStatus();
     setIsConfiguring(true);
   };
 
@@ -177,7 +174,6 @@ const TwoFaSettings = ({
         // WIDOK: 2FA WYŁĄCZONE
         <div>
           {!isConfiguring ? (
-           // Ekran początkowy (przed konfiguracją)
            <div style={{animation: 'fadeIn 0.3s', padding: '20px 0'}}>
              <p style={{marginBottom: 20, color: '#cbd5e1'}}>
                Dwuskładnikowe uwierzytelnianie dodaje dodatkową warstwę ochrony do Twojego konta.
@@ -312,40 +308,27 @@ const HomeContent = () => (
  </div>
 );
 
-// --- Main Component ---
 
 export default function LoginRegister() {
   const [mode, setMode] = useState('login');
   const [page, setPage] = useState('auth');
   const [innerPage, setInnerPage] = useState('home');
 
-  // Login Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // 2FA Login State
   const [is2FaLogin, setIs2FaLogin] = useState(false);
   const [tempToken, setTempToken] = useState('');
   const [twoFaCode, setTwoFaCode] = useState('');
 
-  // UI State
   const [faceState, setFaceState] = useState('idle');
   const [message, setMessage] = useState('');
   const [invalidFields, setInvalidFields] = useState([]);
   const [isError, setIsError] = useState(false);
   const [faceLocked, setFaceLocked] = useState(false);
 
-  // Change Password State
-  const [curPwd, setCurPwd] = useState('');
-  const [newPwd, setNewPwd] = useState('');
-  const [newPwd2, setNewPwd2] = useState('');
-  const [changeMsg, setChangeMsg] = useState('');
-  const [changeError, setChangeError] = useState(false);
-  const [changeInvalid, setChangeInvalid] = useState([]);
-
-  // 2FA Settings State
   const [qrCode, setQrCode] = useState(null);
   const [backupCodes, setBackupCodes] = useState([]);
   const [is2FaEnabled, setIs2FaEnabled] = useState(false);
@@ -601,7 +584,6 @@ export default function LoginRegister() {
    </aside>
   );
 
-  // RENDER logic
   if (page === 'auth') {
     if (is2FaLogin) {
       return (
@@ -671,15 +653,7 @@ export default function LoginRegister() {
           />
          )}
 
-         {innerPage === 'changePassword' && (
-          <ChangePasswordContent
-           handleChangePassword={()=>{}}
-           changeInvalid={[]} curPwd={curPwd} setCurPwd={setCurPwd}
-           newPwd={newPwd} setNewPwd={setNewPwd}
-           newPwd2={newPwd2} setNewPwd2={setNewPwd2}
-           changeError={false} changeMsg=""
-          />
-         )}
+         {innerPage === 'changePassword' && <ChangePassword />}
        </main>
      </div>
    </div>

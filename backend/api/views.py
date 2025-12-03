@@ -11,10 +11,15 @@ import io
 import base64
 import secrets
 from django.conf import settings
-from django.contrib.auth.password_validation import validate_password, ValidationError
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.backends import TokenBackend
 from .models import UserProfile
+from rest_framework import serializers, status, permissions
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
 
 def hello(request):
     return JsonResponse({"message": "Hello from Django!"})
@@ -120,17 +125,14 @@ def verify_2fa_login(request):
         if not user.profile.totp_secret:
              return JsonResponse({'ok': False, 'error': '2FA not setup for this user'}, status=400)
 
-        # 1. Sprawdź czy to kod TOTP
         totp = pyotp.TOTP(user.profile.totp_secret)
         is_valid_totp = totp.verify(code)
 
-        # 2. Sprawdź czy to kod zapasowy
         is_valid_backup = False
         if not is_valid_totp:
             backup_codes = user.profile.backup_codes or []
             if code in backup_codes:
                 is_valid_backup = True
-                # Usuń zużyty kod
                 user.profile.backup_codes.remove(code)
                 user.profile.save()
 
@@ -150,12 +152,8 @@ def verify_2fa_login(request):
 
 @csrf_exempt
 def setup_2fa(request):
-    """
-    Generuje sekret, kod QR oraz kody zapasowe.
-    """
     user = request.user
     if not user.is_authenticated:
-        # Fallback manual auth check
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
             try:
@@ -170,11 +168,8 @@ def setup_2fa(request):
     if not hasattr(user, 'profile'):
         UserProfile.objects.create(user=user)
 
-    # Zawsze generuj nowy sekret przy wejściu w setup, jeśli 2FA nie jest aktywne
-    # (lub jeśli user chce zresetować - w tej wersji zakładamy start od zera przy setupie)
     if not user.profile.is_2fa_enabled:
         user.profile.totp_secret = pyotp.random_base32()
-        # Generuj 10 kodów zapasowych (8 cyfr hex)
         new_backup_codes = [secrets.token_hex(4) for _ in range(10)]
         user.profile.backup_codes = new_backup_codes
         user.profile.save()
@@ -198,17 +193,11 @@ def setup_2fa(request):
 
 @csrf_exempt
 def confirm_2fa_setup(request):
-    """
-    Włącza lub wyłącza 2FA.
-    Przy włączaniu wymaga kodu TOTP.
-    Przy wyłączaniu NIE wymaga kodu (zgodnie z prośbą).
-    """
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
     user = request.user
     if not user.is_authenticated:
-        # Fallback auth
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
             try:
@@ -225,13 +214,11 @@ def confirm_2fa_setup(request):
         code = data.get('code')
         enable = data.get('enable', True)
 
-        # Scenariusz WYŁĄCZANIA - bez kodu
         if not enable:
             user.profile.is_2fa_enabled = False
             user.profile.save()
             return JsonResponse({'ok': True, 'message': '2FA disabled successfully'})
 
-        # Scenariusz WŁĄCZANIA - wymaga kodu
         if not user.profile.totp_secret:
              return JsonResponse({'error': 'Setup not initialized'}, status=400)
 
@@ -272,3 +259,47 @@ def debug_delete_users(request):
 @csrf_exempt
 def logout_view(request):
     return JsonResponse({'ok': True, 'message': 'Logged out'})
+
+@csrf_exempt
+def change_password(request):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+
+    user = request.user
+    if not user.is_authenticated:
+        auth_header = request.headers.get('Authorization') or request.META.get('HTTP_AUTHORIZATION', '')
+        if auth_header and auth_header.startswith('Bearer '):
+            try:
+                token_str = auth_header.split(' ')[1]
+                valid_data = TokenBackend(algorithm='HS256').decode(token_str, verify=False)
+                user = User.objects.get(id=valid_data['user_id'])
+            except Exception:
+                return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
+        else:
+            return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+    current = (payload.get('current_password') or '').strip()
+    new = (payload.get('new_password') or '').strip()
+    new2 = (payload.get('new_password2') or '').strip()
+
+    if not current:
+        return JsonResponse({'ok': False, 'error': 'Wpisz aktualne hasło', 'invalid': ['currentPassword']}, status=400)
+    if new != new2:
+        return JsonResponse({'ok': False, 'error': 'Nowe hasła nie są identyczne', 'invalid': ['newPassword','confirmNewPassword']}, status=400)
+
+    if not user.check_password(current):
+        return JsonResponse({'ok': False, 'error': 'Nieprawidłowe aktualne hasło', 'invalid': ['currentPassword']}, status=400)
+
+    try:
+        validate_password(new, user=user)
+    except ValidationError as exc:
+        return JsonResponse({'ok': False, 'error': ' '.join(exc.messages), 'invalid': ['newPassword']}, status=400)
+
+    user.set_password(new)
+    user.save()
+    return JsonResponse({'ok': True, 'message': 'Hasło zmieniono pomyślnie.'})
