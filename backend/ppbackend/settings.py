@@ -104,6 +104,9 @@ CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '') .split(',') if
 
 PASSWORD_PEPPER = os.environ.get("PASSWORD_PEPPER", "dev-pepper")
 
+# Encryption key for TOTP secrets - MUST be set in production
+TOTP_ENCRYPTION_KEY = os.environ.get("TOTP_ENCRYPTION_KEY", "dev-totp-encryption-key-change-in-production")
+
 # Autorski hasher będzie używany jako pierwszy, w innym przypadku domyślne
 PASSWORD_HASHERS = [
     'api.hashers.PBKDF2PepperedHasher', 
