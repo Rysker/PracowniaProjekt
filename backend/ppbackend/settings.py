@@ -104,8 +104,12 @@ CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '') .split(',') if
 
 PASSWORD_PEPPER = os.environ.get("PASSWORD_PEPPER", "dev-pepper")
 
-# Encryption key for TOTP secrets - MUST be set in production
-TOTP_ENCRYPTION_KEY = os.environ.get("TOTP_ENCRYPTION_KEY", "dev-totp-encryption-key-change-in-production")
+# Encryption key for TOTP secrets - MUST be set via environment variable in production
+# In DEBUG mode, a default key is used for development convenience
+_totp_key = os.environ.get("TOTP_ENCRYPTION_KEY")
+if not _totp_key and not DEBUG:
+    raise ValueError("TOTP_ENCRYPTION_KEY environment variable must be set in production")
+TOTP_ENCRYPTION_KEY = _totp_key or "dev-totp-encryption-key-change-in-production"
 
 # Autorski hasher będzie używany jako pierwszy, w innym przypadku domyślne
 PASSWORD_HASHERS = [

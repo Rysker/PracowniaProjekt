@@ -4,8 +4,11 @@ Uses Fernet symmetric encryption from the cryptography library.
 """
 import base64
 import hashlib
-from cryptography.fernet import Fernet
+import logging
+from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _get_fernet_key():
@@ -31,9 +34,18 @@ def encrypt_totp_secret(plaintext_secret):
         
     Returns:
         The encrypted secret as a base64 string, or None if input is None
+        
+    Raises:
+        ValueError: If the secret is not a valid base32 string
     """
     if plaintext_secret is None:
         return None
+    
+    # Validate base32 format
+    try:
+        base64.b32decode(plaintext_secret.upper())
+    except Exception:
+        raise ValueError("TOTP secret must be a valid base32 string")
     
     fernet = Fernet(_get_fernet_key())
     encrypted = fernet.encrypt(plaintext_secret.encode())
@@ -48,11 +60,18 @@ def decrypt_totp_secret(encrypted_secret):
         encrypted_secret: The encrypted TOTP secret (base64 string)
         
     Returns:
-        The decrypted plaintext TOTP secret, or None if input is None
+        The decrypted plaintext TOTP secret, or None if input is None or decryption fails
     """
     if encrypted_secret is None:
         return None
     
-    fernet = Fernet(_get_fernet_key())
-    decrypted = fernet.decrypt(encrypted_secret.encode())
-    return decrypted.decode()
+    try:
+        fernet = Fernet(_get_fernet_key())
+        decrypted = fernet.decrypt(encrypted_secret.encode())
+        return decrypted.decode()
+    except InvalidToken:
+        logger.error("Failed to decrypt TOTP secret: invalid token or corrupted data")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error decrypting TOTP secret: {e}")
+        return None

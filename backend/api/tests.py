@@ -29,6 +29,16 @@ class TOTPEncryptionTest(TestCase):
         """Test that decrypting None returns None."""
         self.assertIsNone(decrypt_totp_secret(None))
 
+    def test_encrypt_invalid_base32_raises_error(self):
+        """Test that encrypting invalid base32 raises ValueError."""
+        with self.assertRaises(ValueError):
+            encrypt_totp_secret("not-valid-base32!")
+
+    def test_decrypt_corrupted_data_returns_none(self):
+        """Test that decrypting corrupted data returns None gracefully."""
+        result = decrypt_totp_secret("corrupted-not-valid-encrypted-data")
+        self.assertIsNone(result)
+
 
 class UserProfileTOTPTest(TestCase):
     """Tests for UserProfile TOTP secret storage."""
