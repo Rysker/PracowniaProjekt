@@ -13,7 +13,8 @@ param()
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-function Get-RepoRoot {
+function Get-RepoRoot 
+{
     if ($PSScriptRoot) 
 	{ 
 		return (Resolve-Path $PSScriptRoot\..).Path 
@@ -27,11 +28,7 @@ function Get-RepoRoot {
 
 function Set-Or-Append-EnvValue 
 {
-    param(
-        [ref]$Content,
-        [string]$Key,
-        [string]$Value
-    )
+    param([ref]$Content, [string]$Key, [string]$Value)
     if ($Content.Value -match "(?m)^(?:\s*)$Key=") 
 	{
         $Content.Value = $Content.Value -replace "(?m)^($Key)=.*", "$Key=$Value"
@@ -44,6 +41,45 @@ function Set-Or-Append-EnvValue
 		}
         $Content.Value += "$Key=$Value"
     }
+}
+
+$certDir = "certs"
+$certKey = "$certDir/nginx-selfsigned.key"
+$certCrt = "$certDir/nginx-selfsigned.crt"
+
+if (-not (Test-Path $certDir)) 
+{ 
+    New-Item -ItemType Directory -Force -Path $certDir | Out-Null 
+}
+
+if (-not (Test-Path $certKey)) 
+{
+    Write-Host "Nie znaleziono certyfikatow SSL. Generowanie nowych..." -ForegroundColor Yellow
+    
+    # Próba 1: mkcert 
+    if (Get-Command mkcert -ErrorAction SilentlyContinue) 
+    {
+        Write-Host "Uzywam mkcert" -ForegroundColor Green
+        mkcert -install
+        mkcert -key-file $certKey -cert-file $certCrt localhost 127.0.0.1 ::1
+    } 
+    # Próba 2: Systemowy OpenSSL
+    elseif (Get-Command openssl -ErrorAction SilentlyContinue) 
+    {
+        Write-Host "Uzywam systemowego OpenSSL" -ForegroundColor Gray
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout $certKey -out $certCrt -subj "//CN=localhost" 2>$null
+    } 
+    # Próba 3: Docker
+    else 
+{
+        Write-Host "Brak narzedzi w systemie. Uzywam Dockera do generowania" -ForegroundColor Gray
+        docker run --rm -v "${PWD}/certs:/certs" alpine/openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /certs/nginx-selfsigned.key -out /certs/nginx-selfsigned.crt -subj "/CN=localhost"
+    }
+    Write-Host "Certyfikaty wygenerowane." -ForegroundColor Green
+} 
+else 
+{
+    Write-Host "Certyfikaty SSL już istnieją." -ForegroundColor Green
 }
 
 function Generate-Secret 
