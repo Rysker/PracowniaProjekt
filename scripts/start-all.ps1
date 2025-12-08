@@ -1,115 +1,190 @@
 #!/usr/bin/env pwsh
+<#
+.SYNOPSIS
+    Skrypt inicjalizujący środowisko deweloperskie (Backend + Frontend + HTTPS).
+.DESCRIPTION
+    1. Tworzy/Aktualizuje plik .env (generuje sekrety).
+    2. Uruchamia Docker Compose (Nginx, Django, Postgres).
+    3. Sprawdza port 3000 i uruchamia Frontend (React) z wymuszonym HTTPS.
+#>
+
 param()
 
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
 function Get-RepoRoot {
-	if ($PSScriptRoot) { return (Resolve-Path $PSScriptRoot\..).Path }
-	if ($MyInvocation.MyCommand.Definition) { return (Resolve-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition)\..).Path }
-	return (Get-Location).Path
+    if ($PSScriptRoot) 
+	{ 
+		return (Resolve-Path $PSScriptRoot\..).Path 
+	}
+    if ($MyInvocation.MyCommand.Definition) 
+	{ 
+		return (Resolve-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition)\..).Path 
+	}
+    return (Get-Location).Path
 }
 
-Write-Host "Preparing environment and starting services..."
+function Set-Or-Append-EnvValue 
+{
+    param(
+        [ref]$Content,
+        [string]$Key,
+        [string]$Value
+    )
+    if ($Content.Value -match "(?m)^(?:\s*)$Key=") 
+	{
+        $Content.Value = $Content.Value -replace "(?m)^($Key)=.*", "$Key=$Value"
+    } 
+	else 
+	{
+        if ($Content.Value.Trim().Length -gt 0) 
+		{ 
+			$Content.Value += "`n" 
+		}
+        $Content.Value += "$Key=$Value"
+    }
+}
+
+function Generate-Secret 
+{
+    param([int]$Length = 32)
+    $bytes = New-Object byte[] $Length
+    [System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($bytes)
+    return [Convert]::ToBase64String($bytes)
+}
+
+Write-Host "Preparing environment and starting services..." -ForegroundColor Cyan
 
 $RepoRoot = Get-RepoRoot
 Set-Location $RepoRoot
 
-# Ensure .env exists
-if (-not (Test-Path -Path .env)) {
-	if (Test-Path -Path .env.example) {
-		Copy-Item -Path .env.example -Destination .env
-		Write-Host "Created .env from .env.example"
-	} else {
-		New-Item -Path .env -ItemType File -Value "" | Out-Null
-		Write-Host "Created empty .env file"
-	}
+# Configure .env file
+Write-Host "Checking configuration files..." -ForegroundColor Gray
+
+if (-not (Test-Path -Path .env)) 
+{
+    if (Test-Path -Path .env.example) 
+	{
+        Copy-Item -Path .env.example -Destination .env
+        Write-Host "Created .env from .env.example" -ForegroundColor Green
+    } 
+	else 
+	{
+        New-Item -Path .env -ItemType File -Value "" | Out-Null
+        Write-Host "Created empty .env file" -ForegroundColor Yellow
+    }
 }
 
-$envText = Get-Content -Path .env -Raw
+$envContent = Get-Content -Path .env -Raw
+$envRef = [ref]$envContent 
 
-function Set-Or-Append-EnvValue([string]$key, [string]$value) {
-	if ($envText -match "(?m)^(?:\s*)$key=") {
-		$script:envText = $envText -replace "(?m)^($key)=.*","$key=$value"
-	} else {
-		if ($envText.Trim().Length -gt 0) { $script:envText += "`n" }
-		$script:envText += "$key=$value"
-	}
+# Generate PEPPER and SECRET if they do not exist
+if ($envContent -notmatch "(?m)^\s*PASSWORD_PEPPER=.+") 
+{
+    $pepper = Generate-Secret -Length 32
+    Set-Or-Append-EnvValue -Content $envRef -Key 'PASSWORD_PEPPER' -Value $pepper
+    Write-Host "➕ Generated PASSWORD_PEPPER" -ForegroundColor Green
 }
 
-# Generate PASSWORD_PEPPER if missing
-if ($envText -notmatch "(?m)^\s*PASSWORD_PEPPER=.+") {
-	$bytes = New-Object byte[] 32
-	[System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($bytes)
-	$pepper = [Convert]::ToBase64String($bytes)
-	Set-Or-Append-EnvValue 'PASSWORD_PEPPER' $pepper
-	Write-Host "Generated PASSWORD_PEPPER and added to .env"
-} else {
-	Write-Host "PASSWORD_PEPPER already present in .env"
+if ($envContent -notmatch "(?m)^\s*DJANGO_SECRET_KEY=.+") 
+{
+    $rawSecret = Generate-Secret -Length 48
+    $secret = $rawSecret.Substring(0, [Math]::Min(50, $rawSecret.Length))
+    Set-Or-Append-EnvValue -Content $envRef -Key 'DJANGO_SECRET_KEY' -Value $secret
+    Write-Host "➕ Generated DJANGO_SECRET_KEY" -ForegroundColor Green
 }
 
-# Generate DJANGO_SECRET_KEY if missing
-if ($envText -notmatch "(?m)^\s*DJANGO_SECRET_KEY=.+") {
-	$bytes = New-Object byte[] 48
-	[System.Security.Cryptography.RNGCryptoServiceProvider]::Create().GetBytes($bytes)
-	$secret = [Convert]::ToBase64String($bytes)
-	$secret = $secret.Substring(0, [Math]::Min(50,$secret.Length))
-	Set-Or-Append-EnvValue 'DJANGO_SECRET_KEY' $secret
-	Write-Host "Generated DJANGO_SECRET_KEY and added to .env"
-} else {
-	Write-Host "DJANGO_SECRET_KEY already present in .env"
+# Save changes in backup
+if ($envContent -ne (Get-Content -Path .env -Raw)) 
+{
+    try 
+	{
+        if (Test-Path -Path .env.bak) 
+		{
+            $hashEnv = Get-FileHash -Path .env -Algorithm SHA256
+            $hashBak = Get-FileHash -Path .env.bak -Algorithm SHA256
+            $needsBackup = ($hashEnv.Hash -ne $hashBak.Hash)
+        } 
+		else 
+		{
+            $needsBackup = $true
+        }
+
+        if ($needsBackup) 
+		{
+            $ts = Get-Date -Format 'yyyyMMddHHmmss'
+            Copy-Item -Path .env -Destination ".env.bak.$ts" -Force
+            Copy-Item -Path .env -Destination ".env.bak" -Force
+            Write-Host "💾 Backup created: .env.bak" -ForegroundColor Gray
+        }
+        
+        Set-Content -Path .env -Value $envRef.Value -NoNewline
+        Write-Host "💾 Updated .env file" -ForegroundColor Green
+    } 
+	catch 
+	{
+        Write-Warning "Could not update .env or create backup: $_"
+    }
 }
 
-# Persist changes with safe backup
-if (Test-Path -Path .env) {
-	try {
-		$createBackup = $true
-		if (Test-Path -Path .env.bak) {
-			try {
-				$hashEnv = Get-FileHash -Path .env -Algorithm SHA256
-				$hashBak = Get-FileHash -Path .env.bak -Algorithm SHA256
-				if ($hashEnv.Hash -eq $hashBak.Hash) { $createBackup = $false }
-			} catch {
-				$createBackup = $true
-			}
-		}
+# Start Docker Compose
+Write-Host "`nStarting Docker Compose (Backend + DB + Nginx)..." -ForegroundColor Cyan
 
-		if ($createBackup) {
-			$ts = Get-Date -Format 'yyyyMMddHHmmss'
-			$bakName = ".env.bak.$ts"
-			Copy-Item -Path .env -Destination $bakName -Force
-			Copy-Item -Path .env -Destination ".env.bak" -Force
-			Write-Host "Backed up existing .env to '$bakName' and updated '.env.bak'"
-		} else {
-			Write-Host ".env unchanged from .env.bak - no new backup created."
-		}
-	} catch {
-		Write-Warning "Could not create .env backup: $_"
-	}
+try 
+{
+    $dockerVersion = docker version 2>&1
+    if ($LASTEXITCODE -eq 0) 
+	{
+        docker-compose up --build -d
+        Write-Host "Docker services started." -ForegroundColor Green
+    } 
+	else 
+	{
+        throw "Docker not responding"
+    }
+} 
+catch 
+{
+    Write-Warning "Docker is not running or not installed. Skipping backend start."
+    Write-Host "Please start Docker Desktop and run 'docker-compose up --build -d' manually." -ForegroundColor Yellow
 }
 
-Set-Content -Path .env -Value $envText -NoNewline
+# Start Frontend
+Write-Host "`nConfiguring Frontend..." -ForegroundColor Cyan
 
-# Start Docker Compose if Docker is available
-Write-Host "Starting Docker Compose (backend + db)..."
-try {
-	docker version > $null 2>&1
-	$dockerOk = $true
-} catch {
-	$dockerOk = $false
+$port3000Active = $false
+try 
+{
+    $tcpConnection = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
+    if ($tcpConnection) { $port3000Active = $true }
+} 
+catch 
+{
+    $port3000Active = $false
 }
 
-if ($dockerOk) {
-	docker-compose up --build -d
-} else {
-	Write-Warning "Docker not available or not running. Skipping docker-compose step. Start Docker Desktop and run 'docker-compose up --build -d' manually when ready."
-}
-
-# Start frontend dev server
-Write-Host "Starting frontend dev server in a new PowerShell window..."
 $frontendPath = Join-Path $RepoRoot 'frontend'
-if (-not (Test-Path $frontendPath)) {
-	Write-Warning "Frontend folder not found at '$frontendPath'. Skipping frontend start."
-} else {
-	$npmCmd = 'npm install; npm start'
-	Start-Process -FilePath 'powershell' -ArgumentList '-NoExit','-Command',$npmCmd -WorkingDirectory $frontendPath
+
+if ($port3000Active) 
+{
+    Write-Warning "Port 3000 is already in use. Skipping 'npm start'."
+} 
+elseif (-not (Test-Path $frontendPath)) 
+{
+    Write-Warning "Frontend folder not found at '$frontendPath'. Skipping frontend start."
+} 
+else 
+{
+    Write-Host "Starting frontend dev server (HTTPS) in a new window..." -ForegroundColor Green
+    $npmCmd = '$env:HTTPS="true"; npm install; npm start'
+    Start-Process -FilePath 'powershell' -ArgumentList '-NoExit','-Command',$npmCmd -WorkingDirectory $frontendPath
 }
 
-Write-Host 'All done. Backend: http://localhost:8000  Frontend: http://localhost:3000'
+# Summary
+Write-Host "`n---------------------------------------------------------" -ForegroundColor White
+Write-Host "   Environment Setup Complete!" -ForegroundColor Green
+Write-Host "   App (via Nginx):   " -NoNewline; Write-Host "https://localhost" -ForegroundColor Cyan
+Write-Host "   Frontend (Dev):    " -NoNewline; Write-Host "https://localhost:3000" -ForegroundColor Cyan
+Write-Host "   Backend (Direct):  " -NoNewline; Write-Host "http://localhost:8000 (Internal)" -ForegroundColor DarkGray
+Write-Host "---------------------------------------------------------" -ForegroundColor White

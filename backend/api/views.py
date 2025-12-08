@@ -1,239 +1,314 @@
-from django.shortcuts import render
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth import authenticate
-from django.contrib.auth.models import User
-import json
-import traceback
-import pyotp
-import qrcode
 import io
 import base64
 import secrets
+import pyotp
+import qrcode
+
+from django.shortcuts import render
 from django.conf import settings
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
+from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.backends import TokenBackend
-from .models import UserProfile
-from rest_framework import serializers, status, permissions
-from rest_framework.views import APIView
+from django.views.decorators.csrf import csrf_exempt
+
+from rest_framework import status, serializers, permissions
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from rest_framework_simplejwt.backends import TokenBackend
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
+from drf_spectacular.utils import extend_schema
+from .serializers import (
+    RegisterSerializer, LoginSerializer, Verify2FASerializer, 
+    ChangePasswordSerializer, RefreshTokenSerializer, Confirm2FASetupSerializer
+)
+
+from .models import UserProfile
+
+# --- Helper functions ---
+def get_tokens_for_user(user):
+    refresh = RefreshToken.for_user(user)
+    return {
+        'refresh': str(refresh),
+        'access': str(refresh.access_token),
+    }
+
+# --- Public Views ---
+@extend_schema(responses={200: str})
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def hello(request):
-    return JsonResponse({"message": "Hello from Django!"})
+    return Response({"message": "Hello from Django REST Framework!"})
 
-@csrf_exempt
+@extend_schema(request=RegisterSerializer, responses={201: None})
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def register(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST required'}, status=405)
-    try:
-        payload = json.loads(request.body.decode('utf-8'))
-    except Exception:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
-
-    email = payload.get('email', '').strip()
-    password = payload.get('password', '').strip()
-    confirm = payload.get('re_password', '').strip()
+    email = request.data.get('email', '').strip()
+    password = request.data.get('password', '').strip()
+    confirm = request.data.get('re_password', '').strip()
 
     if '@' not in email:
-        return JsonResponse({'error': 'Invalid email', 'invalid': ['email']}, status=400)
+        return Response({
+            'error': 'Invalid email', 'invalid': ['email']}, 
+            status=status.HTTP_400_BAD_REQUEST)
 
     try:
         validate_password(password)
     except ValidationError as e:
-        return JsonResponse({
-            'error': ' '.join(e.messages),
-            'invalid': ['password']
-        }, status=400)
+        return Response({
+            'error': ' '.join(e.messages), 'invalid': ['password']}, 
+            status=status.HTTP_400_BAD_REQUEST)
 
     if password != confirm:
-        return JsonResponse({'error': 'Passwords do not match', 'invalid': ['confirmPassword']}, status=400)
+        return Response({
+            'error': 'Passwords do not match', 'invalid': ['confirmPassword']}, 
+            status=status.HTTP_400_BAD_REQUEST)
 
     if User.objects.filter(username=email).exists():
-        return JsonResponse({'error': 'User already exists', 'invalid': ['email']}, status=400)
+        return Response({
+            'error': 'User already exists', 'invalid': ['email']}, 
+            status=status.HTTP_400_BAD_REQUEST)
 
-    user = User.objects.create_user(username=email, email=email, password=password)
-    user.save()
-    refresh = RefreshToken.for_user(user)
-    return JsonResponse({'ok': True, 'message': 'Registered (demo)', 'token': str(refresh.access_token), 'refresh': str(refresh)})
+    try:
+        user = User.objects.create_user(username=email, email=email, password=password)
+        UserProfile.objects.get_or_create(user=user)
+        return Response({
+            'ok': True,
+            'message': 'Registration successful. Please login.'
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({
+            'error': 'Server error', 'details': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-@csrf_exempt
+@extend_schema(request=LoginSerializer)
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def login_view(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST required'}, status=405)
+    email = request.data.get('email', '').strip()
+    password = request.data.get('password', '').strip()
+
+    if not email or not password:
+        return Response({
+            'ok': False, 'error': 'Email and password required'}, 
+            status=status.HTTP_400_BAD_REQUEST)
+
+    user = authenticate(request, username=email, password=password)
+    
+    if not user:
+        return Response({
+            'ok': False, 'error': 'Invalid credentials'}, 
+            status=status.HTTP_401_UNAUTHORIZED)
+
+    # Check if user has 2FA enabled and make appropriate decision
+    if hasattr(user, 'profile') and user.profile.is_2fa_enabled:
+        temp_refresh = RefreshToken.for_user(user)
+        return Response({
+            'ok': True,
+            '2fa_required': True,
+            'temp_token': str(temp_refresh.access_token),
+            'message': '2FA required'
+        }, status=status.HTTP_200_OK)
+
+    # Login without 2FA Enabled
+    tokens = get_tokens_for_user(user)
+    return Response({
+        'ok': True,
+        'message': 'Logged in',
+        'token': tokens['access'],
+        'refresh': tokens['refresh']
+    }, status=status.HTTP_200_OK)
+
+@extend_schema(request=Verify2FASerializer)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_2fa_login(request):
+    temp_token_str = request.data.get('temp_token')
+    code = str(request.data.get('code', '')).strip()
+
+    if not temp_token_str or not code:
+        return Response({'ok': False, 'error': 'Missing token or code'}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
-        payload = json.loads(request.body.decode('utf-8'))
-    except Exception:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        token = AccessToken(temp_token_str)
+        user_id = token['user_id']
+        user = User.objects.get(id=user_id)
+    except Exception as e:
+        return Response({'ok': False, 'error': 'Invalid session'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    email = payload.get('email', '').strip()
-    password = payload.get('password', '').strip()
+    if not hasattr(user, 'profile') or not user.profile.totp_secret:
+        print("Brak profilu lub sekretu TOTP")
+        return Response({'ok': False, 'error': '2FA not setup'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not email or '@' not in email:
-        return JsonResponse({'ok': False, 'error': 'Invalid email', 'invalid': ['email']}, status=400)
-    if not password:
-        return JsonResponse({'ok': False, 'error': 'Missing password', 'invalid': ['password']}, status=400)
+    totp = pyotp.TOTP(user.profile.totp_secret)
+    is_valid_totp = totp.verify(code, valid_window=1)
 
-    try:
-        user = authenticate(request, username=email, password=password)
-        if not user:
-            return JsonResponse({'ok': False, 'error': 'Invalid credentials', 'invalid': ['email', 'password']}, status=401)
+    is_valid_backup = False
+    if not is_valid_totp:
+        backup_codes_hashes = user.profile.backup_codes or []
+        for hashed_code in backup_codes_hashes:
+            if check_password(code, hashed_code):
+                is_valid_backup = True
+                user.profile.backup_codes.remove(hashed_code)
+                user.profile.save()
+                break
 
-        if hasattr(user, 'profile') and user.profile.is_2fa_enabled:
-            temp_token = RefreshToken.for_user(user)
-            return JsonResponse({
-                'ok': True,
-                '2fa_required': True,
-                'temp_token': str(temp_token.access_token),
-                'message': '2FA required'
-            })
-
-        refresh = RefreshToken.for_user(user)
-        return JsonResponse({
+    if is_valid_totp or is_valid_backup:
+        tokens = get_tokens_for_user(user)
+        return Response({
             'ok': True,
             'message': 'Logged in',
-            'token': str(refresh.access_token),
-            'refresh': str(refresh)
-        })
+            'token': tokens['access'],
+            'refresh': tokens['refresh']
+        }, status=status.HTTP_200_OK)
+    
+    return Response({
+        'ok': False, 'error': 'Invalid authentication code'}, 
+        status=status.HTTP_400_BAD_REQUEST)
 
-    except Exception as e:
-        return JsonResponse({
-            'ok': False,
-            'error': 'Server error',
-            'details': str(e),
-            'trace': traceback.format_exc()
-        }, status=500)
-
-@csrf_exempt
-def verify_2fa_login(request):
-    if request.method != 'POST': return JsonResponse({}, status=405)
-
+@extend_schema(request=RefreshTokenSerializer)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
     try:
-        data = json.loads(request.body)
-        temp_token_str = data.get('temp_token')
-        code = data.get('code', '').strip()
-
-        try:
-            valid_data = TokenBackend(algorithm='HS256').decode(temp_token_str, verify=False)
-            user = User.objects.get(id=valid_data['user_id'])
-        except Exception:
-             return JsonResponse({'ok': False, 'error': 'Invalid or expired session'}, status=401)
-
-        if not user.profile.totp_secret:
-             return JsonResponse({'ok': False, 'error': '2FA not setup for this user'}, status=400)
-
-        totp = pyotp.TOTP(user.profile.totp_secret)
-        is_valid_totp = totp.verify(code)
-
-        is_valid_backup = False
-        if not is_valid_totp:
-            backup_codes = user.profile.backup_codes or []
-            if code in backup_codes:
-                is_valid_backup = True
-                user.profile.backup_codes.remove(code)
-                user.profile.save()
-
-        if is_valid_totp or is_valid_backup:
-            refresh = RefreshToken.for_user(user)
-            return JsonResponse({
-                'ok': True,
-                'message': 'Logged in via 2FA' + (' (Backup Code)' if is_valid_backup else ''),
-                'token': str(refresh.access_token),
-                'refresh': str(refresh)
-            })
-        else:
-            return JsonResponse({'ok': False, 'error': 'Invalid authentication code'}, status=400)
-
+        refresh_token = request.data.get("refresh")
+        if not refresh_token:
+            return Response({
+                'error': 'Refresh token is required'}, 
+                status=status.HTTP_400_BAD_REQUEST)
+            
+        token = RefreshToken(refresh_token)
+        token.blacklist()
+        return Response({
+            'ok': True, 'message': 'Logged out successfully'}, 
+            status=status.HTTP_205_RESET_CONTENT)
     except Exception as e:
-        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+        return Response({
+            'error': 'Invalid token', 'details': str(e)}, 
+            status=status.HTTP_400_BAD_REQUEST)
 
-@csrf_exempt
+
+# --- 2FA Management ---
+@extend_schema(
+    description="Generuje sekret i kod QR (tylko jeśli 2FA nieaktywne)",
+    responses={200: None}
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def setup_2fa(request):
     user = request.user
-    if not user.is_authenticated:
-        auth_header = request.headers.get('Authorization')
-        if auth_header and auth_header.startswith('Bearer '):
-            try:
-                token_str = auth_header.split(' ')[1]
-                valid_data = TokenBackend(algorithm='HS256').decode(token_str, verify=False)
-                user = User.objects.get(id=valid_data['user_id'])
-            except:
-                return JsonResponse({'error': 'Unauthorized'}, status=401)
-        else:
-            return JsonResponse({'error': 'Unauthorized'}, status=401)
+    UserProfile.objects.get_or_create(user=user)
 
-    if not hasattr(user, 'profile'):
-        UserProfile.objects.create(user=user)
+    if user.profile.is_2fa_enabled:
+        return Response({
+            'is_enabled': True,
+            'secret': None,
+            'qr_code': None,
+            'backup_codes': []
+        })
 
-    if not user.profile.is_2fa_enabled:
-        user.profile.totp_secret = pyotp.random_base32()
-        new_backup_codes = [secrets.token_hex(4) for _ in range(10)]
-        user.profile.backup_codes = new_backup_codes
-        user.profile.save()
+    user.profile.totp_secret = pyotp.random_base32()
+    
+    raw_backup_codes = [secrets.token_hex(4) for _ in range(10)]
+    hashed_backup_codes = [make_password(code) for code in raw_backup_codes]
+    
+    user.profile.backup_codes = hashed_backup_codes
+    user.profile.save()
 
     totp_uri = pyotp.totp.TOTP(user.profile.totp_secret).provisioning_uri(
         name=user.email,
         issuer_name="PracowniaProjekt"
     )
-
+    
     qr = qrcode.make(totp_uri)
     stream = io.BytesIO()
     qr.save(stream, format="PNG")
     qr_base64 = base64.b64encode(stream.getvalue()).decode()
 
-    return JsonResponse({
+    return Response({
         'secret': user.profile.totp_secret,
         'qr_code': f"data:image/png;base64,{qr_base64}",
-        'backup_codes': user.profile.backup_codes,
-        'is_enabled': user.profile.is_2fa_enabled
+        'backup_codes': raw_backup_codes,
+        'is_enabled': False
     })
 
-@csrf_exempt
+@extend_schema(request=Confirm2FASetupSerializer)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def confirm_2fa_setup(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST required'}, status=405)
-
     user = request.user
-    if not user.is_authenticated:
-        auth_header = request.headers.get('Authorization')
-        if auth_header and auth_header.startswith('Bearer '):
-            try:
-                token_str = auth_header.split(' ')[1]
-                valid_data = TokenBackend(algorithm='HS256').decode(token_str, verify=False)
-                user = User.objects.get(id=valid_data['user_id'])
-            except:
-                return JsonResponse({'error': 'Unauthorized'}, status=401)
-        else:
-            return JsonResponse({'error': 'Unauthorized'}, status=401)
+    code = request.data.get('code')
+    enable = request.data.get('enable', True)
+
+    if not enable:
+        user.profile.is_2fa_enabled = False
+        user.profile.save()
+        return Response({'ok': True, 'message': '2FA disabled successfully'})
+
+    if not hasattr(user, 'profile') or not user.profile.totp_secret:
+        return Response({
+            'error': 'Setup not initialized'}, 
+            status=status.HTTP_400_BAD_REQUEST)
+
+    totp = pyotp.TOTP(user.profile.totp_secret)
+    if totp.verify(code):
+        user.profile.is_2fa_enabled = True
+        user.profile.save()
+        return Response({'ok': True, 'message': '2FA enabled successfully'})
+    
+    return Response({
+        'ok': False, 'error': 'Invalid code'}, 
+        status=status.HTTP_400_BAD_REQUEST)
+
+# --- Account Management ---
+@extend_schema(request=ChangePasswordSerializer)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    user = request.user
+    current = request.data.get('current_password', '').strip()
+    new = request.data.get('new_password', '').strip()
+    new2 = request.data.get('new_password2', '').strip()
+
+    if not current:
+        return Response({
+            'ok': False, 'error': 'Current password required'}, 
+            status=status.HTTP_400_BAD_REQUEST)
+    
+    if new != new2:
+        return Response({
+            'ok': False, 'error': 'New passwords do not match'}, 
+            status=status.HTTP_400_BAD_REQUEST)
+    
+    if not user.check_password(current):
+        return Response({
+            'ok': False, 'error': 'Invalid current password'}, 
+            status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        data = json.loads(request.body)
-        code = data.get('code')
-        enable = data.get('enable', True)
+        validate_password(new, user=user)
+    except ValidationError as exc:
+        return Response({
+            'ok': False, 'error': ' '.join(exc.messages)}, 
+            status=status.HTTP_400_BAD_REQUEST)
 
-        if not enable:
-            user.profile.is_2fa_enabled = False
-            user.profile.save()
-            return JsonResponse({'ok': True, 'message': '2FA disabled successfully'})
+    user.set_password(new)
+    user.save()
+    return Response({'ok': True, 'message': 'Password changed successfully'})
 
-        if not user.profile.totp_secret:
-             return JsonResponse({'error': 'Setup not initialized'}, status=400)
 
-        totp = pyotp.TOTP(user.profile.totp_secret)
-        if totp.verify(code):
-            user.profile.is_2fa_enabled = True
-            user.profile.save()
-            return JsonResponse({'ok': True, 'message': '2FA enabled successfully'})
-        else:
-            return JsonResponse({'ok': False, 'error': 'Invalid code'}, status=400)
-
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=400)
-
-@csrf_exempt
+# --- Debug Functions. MUST BE DISABLED OR PERMISSION CHANGED BEFORE MOVING APP TO PRODUCTION ---
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def debug_users(request):
     users = User.objects.all()
     data = []
@@ -241,65 +316,15 @@ def debug_users(request):
         has_profile = hasattr(u, 'profile')
         data.append({
             "email": u.email,
-            "password_hash": u.password,
             "has_profile": has_profile,
             "2fa_enabled": u.profile.is_2fa_enabled if has_profile else False,
-            "has_backup_codes": len(u.profile.backup_codes) if has_profile else 0
+            "backup_codes_count": len(u.profile.backup_codes) if has_profile and u.profile.backup_codes else 0
         })
-    return JsonResponse({"users": data})
+    return Response({"users": data})
 
-@csrf_exempt
+@api_view(['DELETE'])
+@permission_classes([AllowAny])
 def debug_delete_users(request):
-    if request.method != 'DELETE':
-        return JsonResponse({'error': 'DELETE required'}, status=405)
     count = User.objects.count()
     User.objects.all().delete()
-    return JsonResponse({'ok': True, 'message': f'{count} users deleted.'})
-
-@csrf_exempt
-def logout_view(request):
-    return JsonResponse({'ok': True, 'message': 'Logged out'})
-
-@csrf_exempt
-def change_password(request):
-    if request.method != 'POST':
-        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
-
-    user = request.user
-    if not user.is_authenticated:
-        auth_header = request.headers.get('Authorization') or request.META.get('HTTP_AUTHORIZATION', '')
-        if auth_header and auth_header.startswith('Bearer '):
-            try:
-                token_str = auth_header.split(' ')[1]
-                valid_data = TokenBackend(algorithm='HS256').decode(token_str, verify=False)
-                user = User.objects.get(id=valid_data['user_id'])
-            except Exception:
-                return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
-        else:
-            return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
-
-    try:
-        payload = json.loads(request.body.decode('utf-8'))
-    except Exception:
-        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
-
-    current = (payload.get('current_password') or '').strip()
-    new = (payload.get('new_password') or '').strip()
-    new2 = (payload.get('new_password2') or '').strip()
-
-    if not current:
-        return JsonResponse({'ok': False, 'error': 'Wpisz aktualne hasło', 'invalid': ['currentPassword']}, status=400)
-    if new != new2:
-        return JsonResponse({'ok': False, 'error': 'Nowe hasła nie są identyczne', 'invalid': ['newPassword','confirmNewPassword']}, status=400)
-
-    if not user.check_password(current):
-        return JsonResponse({'ok': False, 'error': 'Nieprawidłowe aktualne hasło', 'invalid': ['currentPassword']}, status=400)
-
-    try:
-        validate_password(new, user=user)
-    except ValidationError as exc:
-        return JsonResponse({'ok': False, 'error': ' '.join(exc.messages), 'invalid': ['newPassword']}, status=400)
-
-    user.set_password(new)
-    user.save()
-    return JsonResponse({'ok': True, 'message': 'Hasło zmieniono pomyślnie.'})
+    return Response({'ok': True, 'message': f'{count} users deleted.'})

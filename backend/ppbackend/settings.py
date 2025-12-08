@@ -15,7 +15,6 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-r8$4=%2hx299#ofwcc6_$w@#2wdv+=i!+*(9hy+z9=vrbk9-2q')
 DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '') .split(',') if os.environ.get('DJANGO_ALLOWED_HOSTS') else []
@@ -30,6 +29,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'api',
     'corsheaders',
+    'drf_spectacular',
     'rest_framework_simplejwt.token_blacklist',
 ]
 
@@ -100,8 +100,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '') .split(',') if os.environ.get('CORS_ALLOWED_ORIGINS') else []
-
 PASSWORD_PEPPER = os.environ.get("PASSWORD_PEPPER", "dev-pepper")
 
 # Autorski hasher będzie używany jako pierwszy, w innym przypadku domyślne
@@ -129,9 +127,21 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/minute', 
+        'user': '200/minute'
+    }
 }
 
 from datetime import timedelta
@@ -141,3 +151,18 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
 }
+
+CORS_ALLOW_ALL_ORIGINS = True 
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://localhost:3000",
+    "https://localhost",
+    "https://127.0.0.1:3000",
+]
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SAMESITE = 'None'

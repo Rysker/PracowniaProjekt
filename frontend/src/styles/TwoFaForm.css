@@ -1,0 +1,192 @@
+.twofa-card 
+{
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(16px);      
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+
+.twofa-title 
+{
+  margin: 0 0 10px 0;
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.twofa-subtitle 
+{
+  color: #94a3b8;
+  font-size: 0.95rem;
+  margin-bottom: 25px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.emoji-container 
+{
+  margin-bottom: 30px;
+  filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.2));
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.emoji-container:hover 
+{
+  transform: scale(1.1) rotate(5deg);
+}
+
+.twofa-form 
+{
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.input-wrapper 
+{
+  position: relative;
+  width: 100%;
+}
+
+.twofa-input 
+{
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 15px;
+  color: #fff;
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: monospace;
+  box-sizing: border-box;
+}
+
+.twofa-input:focus 
+{
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.1);
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.twofa-input-totp 
+{
+  text-align: center;
+  font-size: 2rem;
+  letter-spacing: 0.5rem;
+  font-weight: 700;
+}
+
+.twofa-input-backup 
+{
+  text-align: center;
+  font-size: 1.2rem;
+  letter-spacing: 2px;
+}
+
+.twofa-actions 
+{
+  margin-top: 10px;
+}
+
+.btn-submit 
+{
+  width: 100%;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
+}
+
+.btn-submit:hover 
+{
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.4);
+}
+
+.btn-submit:active 
+{
+  transform: translateY(0);
+}
+
+.twofa-options 
+{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+  width: 100%;
+}
+
+.btn-secondary 
+{
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover 
+{
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.btn-text 
+{
+  background: transparent;
+  border: none;
+  color: #60a5fa;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 5px;
+}
+
+.btn-text:hover 
+{
+  text-decoration: underline;
+}
+
+.hint-msg 
+{
+  min-height: 24px;
+  margin-top: 15px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: center;
+  color: #cbd5e1;
+}
+
+.hint-msg.error 
+{
+  color: #f87171;
+  animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes shake 
+{
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+  40%, 60% { transform: translate3d(4px, 0, 0); }
+}

@@ -10,6 +10,7 @@ export default function EmojiFace({ state = 'idle', size = 140 })
     function computeAndApply(e) 
     {
       const el = faceRef.current;
+
       if (!el)
          return;
 
@@ -27,14 +28,18 @@ export default function EmojiFace({ state = 'idle', size = 140 })
       const py = Math.round(ny * maxY);
 
       const pupils = el.querySelectorAll('.pupil');
+
       if (!pupils || pupils.length === 0) 
         return;
+
       pupils.forEach(p => {
         p.style.transform = `translate(${px}px, ${py}px)`;
       });
+      
     }
 
-    function onMove(e) {
+    function onMove(e) 
+    {
       if (rafRef.current) 
         cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => computeAndApply(e));

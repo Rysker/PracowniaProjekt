@@ -8,8 +8,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     is_2fa_enabled = models.BooleanField(default=False)
     totp_secret = models.CharField(max_length=32, blank=True, null=True)
-    backup_codes = models.JSONField(default=list, blank=True)  # Lista kodów zapasowych
-
+    backup_codes = models.JSONField(default=list, blank=True)  
     def __str__(self):
         return f"Profile for {self.user.username}"
 
