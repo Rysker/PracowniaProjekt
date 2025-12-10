@@ -11,18 +11,14 @@ const TwoFaSettings = () => {
   const [confirmCode, setConfirmCode] = useState('');
   const [isConfiguring, setIsConfiguring] = useState(false);
 
-  const fetchStatus = async () => {
+  const loadInitialStatus = async () => {
     try 
     {
         const data = await authApi.get2FaStatus();
-        if (data) 
-        {
-            setQrCode(data.qr_code);
-            setBackupCodes(data.backup_codes);
+        if (data && data.is_enabled !== undefined) 
             setIs2FaEnabled(data.is_enabled);
-        }
     } 
-    catch (e)
+    catch (e) 
     {
         console.error(e);
         setSetupMsg('Błąd połączenia z serwerem');
@@ -30,12 +26,32 @@ const TwoFaSettings = () => {
   };
 
   useEffect(() => {
-    fetchStatus();
+    console.log("Hello World!")
+    loadInitialStatus();
   }, []);
 
-  const startConfiguration = () => {
-    fetchStatus();
-    setIsConfiguring(true);
+  const startConfiguration = async () => {
+    setSetupMsg('Generowanie...');
+    try 
+    {
+        const data = await authApi.generate2FaConfig();
+        
+        if (data.error) 
+        {
+            setSetupMsg(data.error);
+            return;
+        }
+
+        setQrCode(data.qr_code);
+        setBackupCodes(data.backup_codes || []);
+        
+        setIsConfiguring(true);
+        setSetupMsg('');
+    } 
+    catch (e) 
+    {
+        setSetupMsg('Nie udało się pobrać konfiguracji.');
+    }
   };
 
   const handleEnable = async () => {
@@ -48,6 +64,8 @@ const TwoFaSettings = () => {
             setSetupMsg('2FA włączone pomyślnie!');
             setIsConfiguring(false);
             setConfirmCode('');
+            setQrCode(null);
+            setBackupCodes([]);
         } 
         else 
         {
@@ -61,16 +79,17 @@ const TwoFaSettings = () => {
   };
 
   const handleDisable = async () => {
+    if (!window.confirm('Czy na pewno chcesz wyłączyć 2FA? Obniży to bezpieczeństwo konta.')) 
+      return;
     try 
     {
-        const data = await authApi.confirm2Fa(null, false);
+        const data = await authApi.confirm2Fa("", false);
         if (data.ok) 
         {
             setIs2FaEnabled(false);
             setSetupMsg('2FA wyłączone.');
             setQrCode(null);
             setBackupCodes([]);
-            fetchStatus(); 
         }   
         else 
         {
@@ -82,7 +101,6 @@ const TwoFaSettings = () => {
   const copyBackupCodes = () => {
     const text = backupCodes.join('\n');
     navigator.clipboard.writeText(text);
-    alert('Skopiowano kody do schowka!');
   };
 
   return (

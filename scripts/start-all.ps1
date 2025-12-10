@@ -43,43 +43,72 @@ function Set-Or-Append-EnvValue
     }
 }
 
+function Ensure-Mkcert 
+{
+    if (Get-Command mkcert -ErrorAction SilentlyContinue) 
+    {
+        Write-Host "mkcert jest juz zainstalowany." -ForegroundColor Green
+        return
+    }
+
+    Write-Host "Brak mkcert w systemie. Rozpoczynam automatyczna instalacje..." -ForegroundColor Yellow
+    
+    $mkcertUrl = ""
+    $output = "mkcert"
+
+    Write-Host "System: Windows" -ForegroundColor Gray
+    $mkcertUrl = "https://dl.filippo.io/mkcert/latest?for=windows/amd64"
+    $output = "mkcert.exe"
+        
+    Write-Host "Pobieranie mkcert.exe..." -ForegroundColor Gray
+    Invoke-WebRequest -Uri $mkcertUrl -OutFile $output
+        
+    $env:PATH += ";$PWD"
+    Write-Host "   Pobrano mkcert.exe do biezacego katalogu." -ForegroundColor Green
+
+    if (Get-Command mkcert -ErrorAction SilentlyContinue) 
+    {
+        Write-Host "mkcert zostal pomyslnie zainstalowany!" -ForegroundColor Green
+    } 
+    else 
+    {
+        Write-Error "Automatyczna instalacja mkcert nie powiodla sie. Certyfikaty beda niezaufane."
+    }
+}
+
 $certDir = "certs"
 $certKey = "$certDir/nginx-selfsigned.key"
 $certCrt = "$certDir/nginx-selfsigned.crt"
+
+Ensure-Mkcert
 
 if (-not (Test-Path $certDir)) 
 { 
     New-Item -ItemType Directory -Force -Path $certDir | Out-Null 
 }
 
-if (-not (Test-Path $certKey)) 
+Write-Host "Konfiguracja certyfikatow SSL..." -ForegroundColor Yellow
+
+if (Get-Command mkcert -ErrorAction SilentlyContinue) 
 {
-    Write-Host "Nie znaleziono certyfikatow SSL. Generowanie nowych..." -ForegroundColor Yellow
-    
-    # Próba 1: mkcert 
-    if (Get-Command mkcert -ErrorAction SilentlyContinue) 
-    {
-        Write-Host "Uzywam mkcert" -ForegroundColor Green
-        mkcert -install
-        mkcert -key-file $certKey -cert-file $certCrt localhost 127.0.0.1 ::1
-    } 
-    # Próba 2: Systemowy OpenSSL
-    elseif (Get-Command openssl -ErrorAction SilentlyContinue) 
-    {
-        Write-Host "Uzywam systemowego OpenSSL" -ForegroundColor Gray
-        openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout $certKey -out $certCrt -subj "//CN=localhost" 2>$null
-    } 
-    # Próba 3: Docker
-    else 
-{
-        Write-Host "Brak narzedzi w systemie. Uzywam Dockera do generowania" -ForegroundColor Gray
-        docker run --rm -v "${PWD}/certs:/certs" alpine/openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /certs/nginx-selfsigned.key -out /certs/nginx-selfsigned.crt -subj "/CN=localhost"
-    }
-    Write-Host "Certyfikaty wygenerowane." -ForegroundColor Green
+    Write-Host "Znaleziono mkcert via Windows. Instaluje Lokalne CA..." -ForegroundColor Cyan
+    mkcert -install
+    Write-Host "Generowanie certyfikatow (nadpisywanie starych)..." -ForegroundColor Cyan
+    mkcert -key-file $certKey -cert-file $certCrt localhost 127.0.0.1 ::1
+    Write-Host "Certyfikaty gotowe" -ForegroundColor Green
 } 
 else 
 {
-    Write-Host "Certyfikaty SSL już istnieją." -ForegroundColor Green
+   
+    if (-not (Test-Path $certKey)) 
+    {
+        Write-Warning "Brak mkcert. Certyfikaty zostaną utworzone przy uzyciu Dockera!"
+        docker run --rm -v "${PWD}/certs:/certs" alpine/openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /certs/nginx-selfsigned.key -out /certs/nginx-selfsigned.crt -subj "/CN=localhost"
+    } 
+    else 
+    {
+        Write-Host "Certyfikaty istnieja (niezaufane, brak mkcert)." -ForegroundColor Gray
+    }
 }
 
 function Generate-Secret 

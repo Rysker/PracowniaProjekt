@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import '../styles/ChangePassword.css';
+import { authApi } from '../api/authApi';
 
 export default function ChangePassword() {
   const [formData, setFormData] = useState({
@@ -20,13 +21,11 @@ export default function ChangePassword() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Reset state
     setStatus({ type: '', message: '' });
     setInvalidFields([]);
 
     const { currentPassword, newPassword, confirmPassword } = formData;
 
-    // 1. Basic Validation
     if (!currentPassword) 
     {
       setStatus({ type: 'error', message: 'Wpisz aktualne hasło' });
@@ -49,49 +48,32 @@ export default function ChangePassword() {
     }
 
     // API Call performed when everything is ok
-    try {
-      const endpoint = `${API.replace(/\/$/, '')}/api/v1/change_password/`;
-      
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          current_password: currentPassword,
-          new_password: newPassword,
-          new_password2: confirmPassword
-        })
+    try 
+    {
+      const data = await authApi.changePassword({
+            current_password: currentPassword,
+            new_password: newPassword,
+            new_password2: confirmPassword
       });
-
-      const contentType = res.headers.get('content-type') || '';
-      const data = contentType.includes('application/json') ? await res.json() : {};
-
-      if (res.ok) 
+      
+      if (data.ok) 
       {
-        setStatus({ type: 'success', message: data.detail || 'Hasło zostało zmienione pomyślnie.' });
+        setStatus({ type: 'success', message: data.message || 'Hasło zostało zmienione pomyślnie.' });
         setFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       } 
       else 
       {
         const newInvalidFields = [];
+        let errorMsg = data.error || 'Błąd zmiany hasła';
 
-        if (data.current_password) 
+        if (data.current_password || (data.invalid && data.invalid.includes('current_password'))) 
           newInvalidFields.push('currentPassword');
-        if (data.new_password) 
+            
+        if (data.new_password || (data.invalid && data.invalid.includes('new_password'))) 
           newInvalidFields.push('newPassword');
 
-        let errorMsg = 'Błąd zmiany hasła';
-
-        if (data.non_field_errors) 
-          errorMsg = Array.isArray(data.non_field_errors) ? data.non_field_errors[0] : data.non_field_errors;
-        else if (data.detail) 
+        if (data.detail) 
           errorMsg = data.detail;
-        else if (data.current_password) 
-          errorMsg = data.current_password[0];
-        else if (data.new_password) 
-          errorMsg = data.new_password[0];
 
         setStatus({ type: 'error', message: errorMsg });
         setInvalidFields(newInvalidFields);
@@ -99,7 +81,8 @@ export default function ChangePassword() {
     } 
     catch (err) 
     {
-      setStatus({ type: 'error', message: 'Błąd sieci. Spróbuj ponownie później.' });
+        console.error(err);
+        setStatus({ type: 'error', message: 'Błąd sieci. Spróbuj ponownie później.' });
     }
   };
 

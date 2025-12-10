@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     change_password, hello, logout_view, register, login_view,
     debug_users, debug_delete_users,
-    setup_2fa, confirm_2fa_setup, verify_2fa_login
+    setup_2fa, confirm_2fa_setup, verify_2fa_login, get_2fa_status
 )
 
 urlpatterns = [
@@ -12,6 +12,7 @@ urlpatterns = [
 
     path('login/2fa/', verify_2fa_login),
     path('2fa/setup/', setup_2fa),
+    path('2fa/status/', get_2fa_status),
     path('2fa/confirm/', confirm_2fa_setup),
     path('change_password/', change_password),
 

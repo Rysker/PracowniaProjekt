@@ -22,6 +22,12 @@ Poniżej znajdziesz szczegółową instrukcję krok po kroku jak uruchomić cał
 ```
 
 --------------------------------------------------------------------------------
+- Utwórz plik `.env` w folderze `frontend` i ustaw następujące wartości:
+```
+REACT_APP_API_URL=https://localhost
+HTTPS=true
+```
+
 2) Uruchomienie kodu
 
 Z domyślnego katalogu repozytorium uruchom w terminalu:

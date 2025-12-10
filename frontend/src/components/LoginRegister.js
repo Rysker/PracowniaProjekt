@@ -26,7 +26,6 @@ export default function App()
   const [invalidFields, setInvalidFields] = useState([]);
   
   const [is2FaLogin, setIs2FaLogin] = useState(false);
-  const [tempToken, setTempToken] = useState('');
   const [twoFaCode, setTwoFaCode] = useState('');
 
   const [message, setMessage] = useState('');
@@ -57,7 +56,7 @@ export default function App()
       
       const data = await action(payload);
 
-      if (!data.ok && !data.token && !data['2fa_required']) 
+      if (!data.ok && !data['2fa_required']) 
       {
         handleError(data.error || 'Błąd', data.invalid);
         return;
@@ -76,7 +75,6 @@ export default function App()
       {
         if (data['2fa_required']) 
         {
-          setTempToken(data.temp_token);
           setIs2FaLogin(true);
           setFaceState('peek');
         } 
@@ -98,11 +96,11 @@ export default function App()
     
     try 
     {
-      const data = await authApi.verify2FA(tempToken, twoFaCode);
-      if (data.token) 
+      const data = await authApi.verify2FA(null, twoFaCode);
+      if (data.ok) 
       {
-        loginUser(data);
-      } 
+        loginUser();
+      }
       else 
       {
         handleError(data.error || 'Błąd kodu');
@@ -115,9 +113,7 @@ export default function App()
     }
   };
 
-  const loginUser = (data) => {
-    localStorage.setItem('accessToken', data.token);
-    localStorage.setItem('refreshToken', data.refresh);
+  const loginUser = () => {
     triggerSuccessAnim();
     setPage('dashboard');
     setInnerPage('home');
@@ -125,8 +121,16 @@ export default function App()
     setMessage('');
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
+  const handleLogout = async () => {
+    try 
+    {
+      await authApi.logout();
+    } 
+    catch (e) 
+    {
+      console.error("Wylogowanie nie powiodło się", e);
+    }
+
     setPage('auth');
     setEmail(''); setPassword(''); setIs2FaLogin(false);
     setFaceState('idle');

@@ -1,58 +1,63 @@
 const API_URL = (process.env.REACT_APP_API_URL || 'https://localhost').replace(/\/$/, '');
 const BASE_URL = `${API_URL}/api/v1`;
 
-const getHeaders = (auth = false) => {
-    const headers = { 'Content-Type': 'application/json' };
-    if (auth) 
-    {
-        const token = localStorage.getItem('accessToken');
-        if (token) 
-            headers['Authorization'] = `Bearer ${token}`;
-    }
-  return headers;
+const getFetchOptions = (method = 'GET', body = null) => {
+  const options = {
+    method: method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include', 
+  };
+
+  if (body) 
+  {
+    options.body = JSON.stringify(body);
+  }
+
+  return options;
 };
 
 export const authApi = {
   login: async (payload) => {
-    const res = await fetch(`${BASE_URL}/login/`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(payload),
-    });
+    const res = await fetch(`${BASE_URL}/login/`, getFetchOptions('POST', payload));
     return res.json();
   },
 
   register: async (payload) => {
-    const res = await fetch(`${BASE_URL}/register/`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(payload),
-    });
+    const res = await fetch(`${BASE_URL}/register/`, getFetchOptions('POST', payload));
     return res.json();
   },
 
-  verify2FA: async (tempToken, code) => {
-    const res = await fetch(`${BASE_URL}/login/2fa/`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ temp_token: tempToken, code }),
-    });
+  verify2FA: async (ignoredToken, code) => {
+    const res = await fetch(`${BASE_URL}/login/2fa/`, getFetchOptions('POST', { 
+        code: code 
+    }));
     return res.json();
+  },
+
+  logout: async () => {
+    const res = await fetch(`${BASE_URL}/logout/`, getFetchOptions('POST', {}));
+    return res.status; 
   },
 
   get2FaStatus: async () => {
-    const res = await fetch(`${BASE_URL}/2fa/setup/`, {
-      headers: getHeaders(true),
-    });
+    const res = await fetch(`${BASE_URL}/2fa/status/`, getFetchOptions('GET'));
+    return res.json();
+  },
+
+  generate2FaConfig: async () => {
+    const res = await fetch(`${BASE_URL}/2fa/setup/`, getFetchOptions('GET'));
     return res.json();
   },
 
   confirm2Fa: async (code, enable) => {
-    const res = await fetch(`${BASE_URL}/2fa/confirm/`, {
-      method: 'POST',
-      headers: getHeaders(true),
-      body: JSON.stringify({ code, enable }),
-    });
+    const res = await fetch(`${BASE_URL}/2fa/confirm/`, getFetchOptions('POST', { code, enable }));
+    return res.json();
+  },
+
+  changePassword: async (payload) => {
+    const res = await fetch(`${BASE_URL}/change_password/`, getFetchOptions('POST', payload));
     return res.json();
   }
 };
